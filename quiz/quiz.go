@@ -1,14 +1,15 @@
 package main
 
 import (
+	"bufio"
+	"encoding/csv"
 	"flag"
 	"fmt"
-	"encoding/csv"
-	"os"
-	"log"
-	"strings"
 	"io"
-	"bufio"
+	"log"
+	"os"
+	"strings"
+	"time"
 )
 
 type Quiz struct {
@@ -19,6 +20,7 @@ type Quiz struct {
 func main() {
 	var helpFlag = flag.Bool("h", false, "help")
 	var questionCSVPathFlag = flag.String("csv", "questions.csv", "Specify the question csv filename.")
+	var timerFlag = flag.Int("timer", 30, "Quiz timer")
 	flag.Parse();
 
 	var quizArr []Quiz
@@ -61,32 +63,48 @@ func main() {
 
 		// new stdin reader
 		stdReader := bufio.NewReader(os.Stdin)
+		
+		fmt.Println("Press <Enter> to start")
+		_, _ = stdReader.ReadString('\n')
 
-		score := 0
+		scoreChan := make(chan int)
+		timerChan := make(chan bool)
 
-		fmt.Println(len(quizArr))
-		for _, qz := range quizArr {
-			// print question
-			fmt.Printf("%s\n", qz.Question)
+		go startQuiz(quizArr, stdReader, scoreChan)
+		go runTimer(*timerFlag, timerChan)
 
-			// wait for answer
-			answer, _ := stdReader.ReadString('\n')
-			answer = strings.TrimSpace(answer)
-
-			if strings.ToLower(answer) == strings.ToLower(qz.Answer) {
-				fmt.Println("Correct answer")
-				score ++
-			} else {
-				fmt.Printf("Incorrect answer, input-%s :: correct answer-%s\n", answer, qz.Answer)
-			}
-
-		}
-
-		if score <=0 {
-			fmt.Printf("Your score is %d\n", 0)
-		} else {
-			fmt.Printf("Your score is %d\n", score)
+		select {
+		case <- timerChan:
+			fmt.Println("Quiz time is over!")
+		case score := <- scoreChan:
+			fmt.Printf("You scored %d", score)
 		}
 	}
+	
+}
 
+func runTimer(timeInSec int, timerChan chan<- bool) {
+	time.Sleep(time.Duration(timeInSec) * time.Second)
+	timerChan <- true
+}
+
+func startQuiz(quizArr []Quiz, stdReader *bufio.Reader, scoreChan chan<- int) {
+	
+	score := 0
+	for _, qz := range quizArr {
+		fmt.Printf("%s\n", qz.Question)
+	
+		answer, _ := stdReader.ReadString('\n')
+		answer = strings.TrimSpace(answer)
+	
+		if strings.ToLower(answer) == strings.ToLower(qz.Answer) {
+			fmt.Println("Correct answer")
+			score ++
+		} else {
+			fmt.Printf("Incorrect answer, input-%s :: correct answer-%s\n", answer, qz.Answer)
+		}
+	
+	}
+	
+	scoreChan <- score
 }
